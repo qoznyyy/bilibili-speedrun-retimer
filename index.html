@@ -1,192 +1,60 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Speedrun Retimer</title>
-
-<style>
-body{
-  font-family:Arial;
-  background:#111;
-  color:white;
-  text-align:center;
-}
-
-#player{
-  margin-top:20px;
-}
-
-video{
-  width:800px;
-  max-width:95%;
-}
-
-.panel{
-  margin-top:20px;
-}
-
-button{
-  padding:6px 10px;
-  margin:3px;
-}
-
-input{
-  padding:4px;
-}
-
-.result{
-  margin-top:10px;
-  font-size:20px;
-}
-</style>
+    <meta charset="UTF-8">
+    <title>Bilibili Speedrun Retimer & Downloader</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #111; color: #eee; text-align: center; margin: 0; padding: 20px; }
+        #player-container { margin: 20px auto; max-width: 850px; background: #000; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.7); overflow: hidden; }
+        video { width: 100%; display: block; }
+        .panel { background: #222; padding: 20px; margin-top: 10px; border-radius: 8px; border: 1px solid #333; max-width: 850px; margin-left: auto; margin-right: auto; }
+        .controls-row { margin-bottom: 15px; display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap; }
+        button { padding: 10px 16px; cursor: pointer; background: #444; color: white; border: none; border-radius: 4px; font-weight: bold; transition: 0.2s; }
+        button:hover { background: #555; }
+        .btn-primary { background: #007bff; }
+        .btn-primary:hover { background: #0056b3; }
+        .btn-download { background: #e91e63; }
+        .btn-download:hover { background: #c2185b; }
+        input { padding: 10px; background: #111; color: white; border: 1px solid #444; border-radius: 4px; }
+        .result-box { font-size: 32px; color: #00ff88; margin: 15px 0; font-family: 'Courier New', monospace; font-weight: bold; }
+        .file-label { padding: 10px 16px; background: #28a745; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        input[type="file"] { display: none; }
+        .hint { font-size: 13px; color: #888; margin-top: 10px; line-height: 1.5; }
+    </style>
 </head>
-
 <body>
 
-<h2>Speedrun Video Retimer</h2>
+    <h2>Speedrun Retimer & Downloader</h2>
 
-<input id="url" placeholder="Paste video URL or Bilibili BV link" size="50">
-<button onclick="loadVideo()">Load</button>
+    <div class="controls-row">
+        <input id="url" placeholder="Paste Bilibili link (BV...)" size="40">
+        <button class="btn-primary" onclick="loadVideo()">Load Link</button>
+        <span>OR</span>
+        <label class="file-label">
+            📁 Open Local Video
+            <input type="file" accept="video/*" onchange="handleFile(this)">
+        </label>
+    </div>
 
-<div id="player">
-<video id="video" controls></video>
-</div>
+    <div id="player-container">
+        <video id="video" controls crossorigin="anonymous"></video>
+    </div>
 
-<div class="panel">
+    <div class="panel">
+        <div class="controls-row">
+            FPS: <input id="fps" type="number" value="60" style="width: 60px;">
+            <button class="btn-download" onclick="downloadVideo()">⬇️ Download Video</button>
+        </div>
+        
+        <div class="controls-row">
+            <button onclick="setStart()">Set Start (A)</button>
+            <button onclick="setEnd()">Set End (E)</button>
+        </div>
 
-FPS
-<input id="fps" value="60" size="4">
+        <div class="controls-row">
+            <button onclick="step(-1)">◀ Frame (,)</button>
+            <button onclick="step(1)">Frame ▶ (.)</button>
+        </div>
 
-<br><br>
-
-<button onclick="setStart()">Set Start</button>
-<button onclick="setEnd()">Set End</button>
-
-<br>
-
-<button onclick="step(-1)">◀ Frame</button>
-<button onclick="step(1)">Frame ▶</button>
-
-</div>
-
-<div class="panel">
-
-Start: <span id="start">-</span><br>
-End: <span id="end">-</span>
-
-<div class="result">
-Time: <span id="result">0.000</span>
-</div>
-
-<button onclick="copy()">Copy Result</button>
-
-</div>
-
-<script>
-
-const video = document.getElementById("video")
-
-let startTime = null
-let endTime = null
-
-async function loadVideo(){
-
-  const url = document.getElementById("url").value.trim()
-
-  const match = url.match(/BV\w+/)
-
-  if(!match){
-    video.src = url
-    video.load()
-    return
-  }
-
-  const bvid = match[0]
-
-  const res = await fetch(
-    `https://bilibili-speedrun-retimer.marko-looke.workers.dev/?bvid=${bvid}`
-  )
-
-  const data = await res.json()
-
-  video.src = data.url
-  video.load()
-
-}
-
-function fps(){
-  return parseFloat(document.getElementById("fps").value)
-}
-
-function frameDuration(){
-  return 1 / fps()
-}
-
-function step(dir){
-
-  video.pause()
-
-  video.currentTime += frameDuration() * dir
-
-}
-
-function setStart(){
-
-  startTime = video.currentTime
-
-  document.getElementById("start").innerText =
-  startTime.toFixed(3)
-
-  update()
-
-}
-
-function setEnd(){
-
-  endTime = video.currentTime
-
-  document.getElementById("end").innerText =
-  endTime.toFixed(3)
-
-  update()
-
-}
-
-function update(){
-
-  if(startTime == null || endTime == null)
-  return
-
-  let t = endTime - startTime
-
-  document.getElementById("result").innerText =
-  t.toFixed(3)
-
-}
-
-function copy(){
-
-  const text =
-  document.getElementById("result").innerText
-
-  navigator.clipboard.writeText(text)
-
-}
-
-document.addEventListener("keydown", e=>{
-
-  if(e.key==",") step(-1)
-
-  if(e.key==".") step(1)
-
-  if(e.key=="a") setStart()
-
-  if(e.key=="e") setEnd()
-
-})
-
-</script>
-
-</body>
-</html>
-
+        <div style="border-top: 1px solid #444; padding-top: 15px;">
+            Start: <span id="start">-</span>s
