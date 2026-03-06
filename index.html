@@ -93,49 +93,27 @@ async function loadVideo(){
 
   const url = document.getElementById("url").value.trim()
 
-  if(url.includes("bilibili.com")){
+  const match = url.match(/BV\w+/)
 
-    const bvMatch = url.match(/BV\w+/)
-
-    if(!bvMatch){
-      alert("Could not find BV id")
-      return
-    }
-
-    const bvid = bvMatch[0]
-
-    try{
-
-      const view = await fetch(
-        `https://api.bilibili.com/x/web-interface/view?bvid=${bvid}`
-      ).then(r=>r.json())
-
-      const cid = view.data.cid
-
-      const play = await fetch(
-        `https://api.bilibili.com/x/player/playurl?bvid=${bvid}&cid=${cid}&fnval=16`
-      ).then(r=>r.json())
-
-      const videoURL =
-        play.data.dash.video[0].baseUrl
-
-      video.src = videoURL
-      video.load()
-
-    }catch(e){
-
-      alert("Failed to load Bilibili video")
-
-    }
-
-  }
-
-  else{
-
+  if(!match){
     video.src = url
     video.load()
-
+    return
   }
+
+  const bvid = match[0]
+
+  const res = await fetch(
+    `https://bilibili-speedrun-retimer.marko-looke.workers.dev/?bvid=${bvid}`
+  )
+
+  const data = await res.json()
+
+  video.src = data.url
+  video.load()
+
+}
+
 
 }
 
