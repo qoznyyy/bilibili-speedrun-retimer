@@ -1,1 +1,217 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Speedrun Retimer</title>
+
+<style>
+body{
+  font-family:Arial;
+  background:#111;
+  color:white;
+  text-align:center;
+}
+
+#player{
+  margin-top:20px;
+}
+
+video{
+  width:800px;
+  max-width:95%;
+}
+
+.panel{
+  margin-top:20px;
+}
+
+button{
+  padding:6px 10px;
+  margin:3px;
+}
+
+input{
+  padding:4px;
+}
+
+.result{
+  margin-top:10px;
+  font-size:20px;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Speedrun Video Retimer</h2>
+
+<input id="url" placeholder="Paste video URL or Bilibili BV link" size="50">
+<button onclick="loadVideo()">Load</button>
+
+<div id="player">
+<video id="video" controls></video>
+</div>
+
+<div class="panel">
+
+FPS
+<input id="fps" value="60" size="4">
+
+<br><br>
+
+<button onclick="setStart()">Set Start</button>
+<button onclick="setEnd()">Set End</button>
+
+<br>
+
+<button onclick="step(-1)">◀ Frame</button>
+<button onclick="step(1)">Frame ▶</button>
+
+</div>
+
+<div class="panel">
+
+Start: <span id="start">-</span><br>
+End: <span id="end">-</span>
+
+<div class="result">
+Time: <span id="result">0.000</span>
+</div>
+
+<button onclick="copy()">Copy Result</button>
+
+</div>
+
+<script>
+
+const video = document.getElementById("video")
+
+let startTime = null
+let endTime = null
+
+async function loadVideo(){
+
+  const url = document.getElementById("url").value.trim()
+
+  if(url.includes("bilibili.com")){
+
+    const bvMatch = url.match(/BV\w+/)
+
+    if(!bvMatch){
+      alert("Could not find BV id")
+      return
+    }
+
+    const bvid = bvMatch[0]
+
+    try{
+
+      const view = await fetch(
+        `https://api.bilibili.com/x/web-interface/view?bvid=${bvid}`
+      ).then(r=>r.json())
+
+      const cid = view.data.cid
+
+      const play = await fetch(
+        `https://api.bilibili.com/x/player/playurl?bvid=${bvid}&cid=${cid}&fnval=16`
+      ).then(r=>r.json())
+
+      const videoURL =
+        play.data.dash.video[0].baseUrl
+
+      video.src = videoURL
+      video.load()
+
+    }catch(e){
+
+      alert("Failed to load Bilibili video")
+
+    }
+
+  }
+
+  else{
+
+    video.src = url
+    video.load()
+
+  }
+
+}
+
+function fps(){
+  return parseFloat(document.getElementById("fps").value)
+}
+
+function frameDuration(){
+  return 1 / fps()
+}
+
+function step(dir){
+
+  video.pause()
+
+  video.currentTime += frameDuration() * dir
+
+}
+
+function setStart(){
+
+  startTime = video.currentTime
+
+  document.getElementById("start").innerText =
+  startTime.toFixed(3)
+
+  update()
+
+}
+
+function setEnd(){
+
+  endTime = video.currentTime
+
+  document.getElementById("end").innerText =
+  endTime.toFixed(3)
+
+  update()
+
+}
+
+function update(){
+
+  if(startTime == null || endTime == null)
+  return
+
+  let t = endTime - startTime
+
+  document.getElementById("result").innerText =
+  t.toFixed(3)
+
+}
+
+function copy(){
+
+  const text =
+  document.getElementById("result").innerText
+
+  navigator.clipboard.writeText(text)
+
+}
+
+document.addEventListener("keydown", e=>{
+
+  if(e.key==",") step(-1)
+
+  if(e.key==".") step(1)
+
+  if(e.key=="a") setStart()
+
+  if(e.key=="e") setEnd()
+
+})
+
+</script>
+
+</body>
+</html>
 
