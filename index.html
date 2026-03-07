@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Speedrun Retimer + Proxy Bypass</title>
+    <title>Speedrun Retimer (Bilibili + YouTube)</title>
     <style>
         body { font-family: 'Segoe UI', Arial; background: #111; color: #eee; text-align: center; padding: 20px; }
-        #player-container { margin: 20px auto; max-width: 850px; background: #000; border-radius: 8px; overflow: hidden; }
-        video { width: 100%; display: block; }
+        #player-wrapper { margin: 20px auto; max-width: 850px; background: #000; border-radius: 8px; overflow: hidden; position: relative; aspect-ratio: 16/9; }
+        video, iframe { width: 100%; height: 100%; display: block; border: none; }
         .panel { background: #222; padding: 20px; border-radius: 8px; border: 1px solid #333; max-width: 850px; margin: 10px auto; }
         .controls-row { margin-bottom: 15px; display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap; }
         button { padding: 10px 16px; cursor: pointer; background: #444; color: white; border: none; border-radius: 4px; font-weight: bold; }
@@ -15,25 +15,27 @@
         input { padding: 10px; background: #111; color: white; border: 1px solid #444; border-radius: 4px; }
         .result-box { font-size: 32px; color: #00ff88; font-family: monospace; font-weight: bold; margin: 10px; }
         .proxy-toggle { background: #331111; padding: 8px; border-radius: 4px; border: 1px solid #662222; font-size: 13px; }
-        .timestamp-label { font-size: 14px; color: #aaa; margin-bottom: 5px; }
+        .hidden { display: none !important; }
     </style>
+    <script src="https://www.youtube.com/iframe_api"></script>
 </head>
 <body>
 
     <h2>Speedrun Retimer</h2>
 
     <div class="controls-row">
-        <input id="url" placeholder="Bilibili BV link..." size="35">
-        <button class="btn-primary" onclick="loadVideo()">Load Link</button>
+        <input id="url" placeholder="Paste Bilibili or YouTube link..." size="45">
+        <button class="btn-primary" onclick="handleLoad()">Load Video</button>
         
         <div class="proxy-toggle">
             <input type="checkbox" id="useProxy"> 
-            <label for="useProxy">Force CORS Proxy (Slow)</label>
+            <label for="useProxy">CORS Proxy (Bilibili Only)</label>
         </div>
     </div>
 
-    <div id="player-container">
-        <video id="video" controls crossorigin="anonymous"></video>
+    <div id="player-wrapper">
+        <video id="video-element" controls crossorigin="anonymous"></video>
+        <div id="yt-player" class="hidden"></div>
     </div>
 
     <div class="panel">
@@ -49,7 +51,7 @@
         </div>
 
         <div style="border-top: 1px solid #444; padding-top: 15px;">
-            <div class="timestamp-label" id="points-display">Start: -- | End: --</div>
+            <div id="points-display" style="color:#aaa; font-size:14px;">Start: -- | End: --</div>
             <div id="result-time" class="result-box">0.000s</div>
             <div id="result-frames" style="color: #888;">0 frames</div>
             <br>
@@ -58,85 +60,104 @@
     </div>
 
 <script>
-    const video = document.getElementById("video");
-    let startTime = null;
-    let endTime = null;
+    let ytPlayer;
+    let activePlayer = 'native'; // 'native' or 'youtube'
+    let startTime = null, endTime = null;
 
-    async function loadVideo() {
-        const urlInput = document.getElementById("url").value.trim();
-        const useProxy = document.getElementById("useProxy").checked;
-        const match = urlInput.match(/BV\w+/);
-        
-        if (!match) {
-            alert("Please enter a valid Bilibili BV link.");
-            return;
+    const nativeVid = document.getElementById("video-element");
+    const ytElement = document.getElementById("yt-player");
+
+    // Initialize YT Player
+    function onYouTubeIframeAPIReady() {
+        ytPlayer = new YT.Player('yt-player', {
+            height: '100%', width: '100%',
+            playerVars: { 'controls': 1, 'rel': 0 },
+            events: { 'onReady': () => console.log("YT Ready") }
+        });
+    }
+
+    function getCurrentTime() {
+        return activePlayer === 'youtube' ? ytPlayer.getCurrentTime() : nativeVid.currentTime;
+    }
+
+    function seekTo(time) {
+        if (activePlayer === 'youtube') {
+            ytPlayer.seekTo(time, true);
+        } else {
+            nativeVid.currentTime = time;
         }
+    }
 
+    async function handleLoad() {
+        const url = document.getElementById("url").value.trim();
+        const ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/))([\w-]{11})/);
+        const biliMatch = url.match(/BV\w+/);
+
+        if (ytMatch) {
+            loadYoutube(ytMatch[1]);
+        } else if (biliMatch) {
+            loadBilibili(biliMatch[0]);
+        } else {
+            alert("Invalid URL. Please use a Bilibili BV link or YouTube link.");
+        }
+    }
+
+    function loadYoutube(id) {
+        activePlayer = 'youtube';
+        nativeVid.classList.add('hidden');
+        ytElement.classList.remove('hidden');
+        ytPlayer.loadVideoById(id);
+        resetData();
+    }
+
+    async function loadBilibili(bvid) {
+        activePlayer = 'native';
+        ytElement.classList.add('hidden');
+        nativeVid.classList.remove('hidden');
+        
+        const useProxy = document.getElementById("useProxy").checked;
         try {
-            const res = await fetch(`https://bilibili-speedrun-retimer.marko-looke.workers.dev/?bvid=${match[0]}`);
+            const res = await fetch(`https://bilibili-speedrun-retimer.marko-looke.workers.dev/?bvid=${bvid}`);
             const data = await res.json();
-            
             if (data.url) {
                 let finalUrl = data.url;
-                if (useProxy) {
-                    finalUrl = `https://corsproxy.io/?${encodeURIComponent(finalUrl)}`;
-                }
-                video.src = finalUrl;
-                video.load();
-                // Reset times on new video load
-                startTime = null;
-                endTime = null;
-                update();
+                if (useProxy) finalUrl = `https://corsproxy.io/?${encodeURIComponent(finalUrl)}`;
+                nativeVid.src = finalUrl;
+                nativeVid.load();
+                resetData();
             }
-        } catch (e) {
-            alert("API error. Try checking 'Force CORS Proxy' or verify the link.");
-        }
+        } catch (e) { alert("Bilibili API Error."); }
     }
 
-    function getFps() { 
-        return parseFloat(document.getElementById("fps").value) || 60; 
+    function resetData() {
+        startTime = null; endTime = null; update();
     }
 
-    function step(dir) { 
-        video.pause(); 
-        // Small epsilon added to ensure the frame actually changes
-        video.currentTime += (1 / getFps()) * dir + (dir * 0.00001); 
+    function getFps() { return parseFloat(document.getElementById("fps").value) || 60; }
+
+    function step(dir) {
+        const newTime = getCurrentTime() + (1 / getFps()) * dir + (dir * 0.0001);
+        seekTo(newTime);
     }
 
-    function setStart() { 
-        startTime = video.currentTime; 
-        update(); 
-    }
+    function setStart() { startTime = getCurrentTime(); update(); }
+    function setEnd() { endTime = getCurrentTime(); update(); }
 
-    function setEnd() { 
-        endTime = video.currentTime; 
-        update(); 
-    }
-    
     function update() {
-        const pointsDisplay = document.getElementById("points-display");
         const startTxt = startTime !== null ? startTime.toFixed(3) : "--";
         const endTxt = endTime !== null ? endTime.toFixed(3) : "--";
-        pointsDisplay.innerText = `Start: ${startTxt}s | End: ${endTxt}s`;
+        document.getElementById("points-display").innerText = `Start: ${startTxt}s | End: ${endTxt}s`;
 
         if (startTime !== null && endTime !== null) {
             const diff = Math.abs(endTime - startTime);
-            const fps = getFps();
             document.getElementById("result-time").innerText = diff.toFixed(3) + "s";
-            document.getElementById("result-frames").innerText = Math.round(diff * fps) + " frames";
-        } else {
-            document.getElementById("result-time").innerText = "0.000s";
-            document.getElementById("result-frames").innerText = "0 frames";
+            document.getElementById("result-frames").innerText = Math.round(diff * getFps()) + " frames";
         }
     }
 
     function copyResult() {
-        const time = document.getElementById("result-time").innerText;
-        const frames = document.getElementById("result-frames").innerText;
-        if (time === "0.000s") return;
-        
-        const text = `${time} (${frames})`;
-        navigator.clipboard.writeText(text).then(() => alert("Copied: " + text));
+        const text = `${document.getElementById("result-time").innerText} (${document.getElementById("result-frames").innerText})`;
+        navigator.clipboard.writeText(text).then(() => alert("Copied!"));
     }
 
     document.addEventListener("keydown", e => {
