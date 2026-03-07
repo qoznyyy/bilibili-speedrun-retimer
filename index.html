@@ -2,22 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Speedrun Retimer (Bilibili + YouTube)</title>
+    <title>Speedrun Retimer (YouTube + Bilibili Embeds)</title>
     <style>
         body { font-family: 'Segoe UI', Arial; background: #111; color: #eee; text-align: center; padding: 20px; }
         #player-wrapper { 
-            margin: 20px auto; 
-            max-width: 850px; 
-            background: #000; 
-            border-radius: 8px; 
-            overflow: hidden; 
-            position: relative; 
-            aspect-ratio: 16 / 9; 
+            margin: 20px auto; max-width: 850px; background: #000; 
+            border-radius: 8px; overflow: hidden; position: relative; aspect-ratio: 16 / 9; 
         }
-        #video-element, #yt-player { 
-            position: absolute; top: 0; left: 0; 
-            width: 100%; height: 100%; display: block; border: none; 
-        }
+        iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
         .panel { background: #222; padding: 20px; border-radius: 8px; border: 1px solid #333; max-width: 850px; margin: 10px auto; }
         .controls-row { margin-bottom: 15px; display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap; }
         button { padding: 10px 16px; cursor: pointer; background: #444; color: white; border: none; border-radius: 4px; font-weight: bold; }
@@ -25,8 +17,8 @@
         .btn-primary { background: #007bff; }
         input { padding: 10px; background: #111; color: white; border: 1px solid #444; border-radius: 4px; }
         .result-box { font-size: 32px; color: #00ff88; font-family: monospace; font-weight: bold; margin: 10px; }
-        .proxy-toggle { background: #331111; padding: 8px; border-radius: 4px; border: 1px solid #662222; font-size: 13px; }
-        .hidden { visibility: hidden; pointer-events: none; }
+        .hidden { display: none !important; }
+        .warning { font-size: 12px; color: #ffa500; margin-top: 5px; }
     </style>
     <script src="https://www.youtube.com/iframe_api"></script>
 </head>
@@ -36,123 +28,123 @@
 
     <div class="controls-row">
         <input id="url" placeholder="Paste Bilibili or YouTube link..." size="45">
-        <button class="btn-primary" onclick="handleLoad()">Load Video</button>
-        <div class="proxy-toggle">
-            <input type="checkbox" id="useProxy"> 
-            <label for="useProxy">CORS Proxy (Bili)</label>
-        </div>
+        <button class="btn-primary" onclick="handleLoad()">Load Player</button>
     </div>
 
     <div id="player-wrapper">
-        <video id="video-element" controls crossorigin="anonymous"></video>
         <div id="yt-player"></div>
+        <iframe id="bili-player" class="hidden" allowfullscreen="true"></iframe>
     </div>
 
     <div class="panel">
         <div class="controls-row">
             FPS: <input id="fps" type="number" value="60" step="0.001" style="width: 80px;">
         </div>
+        
         <div class="controls-row">
             <button onclick="setStart()">Set Start (A)</button>
             <button onclick="setEnd()">Set End (E)</button>
             <button onclick="step(-1)">◀ Frame (,)</button>
             <button onclick="step(1)">Frame ▶ (.)</button>
         </div>
+
         <div style="border-top: 1px solid #444; padding-top: 15px;">
             <div id="points-display" style="color:#aaa; font-size:14px;">Start: -- | End: --</div>
             <div id="result-time" class="result-box">0.000s</div>
             <div id="result-frames" style="color: #888;">0 frames</div>
             <br>
             <button onclick="copyResult()">Copy Result</button>
+            <div class="warning" id="bili-warn">Note: Bilibili embed does not support frame-stepping via buttons. Use its internal seek bar.</div>
         </div>
     </div>
 
 <script>
     let ytPlayer;
-    let activePlayer = 'native'; 
+    let activePlayer = 'none';
     let startTime = null, endTime = null;
 
-    const nativeVid = document.getElementById("video-element");
     const ytDiv = document.getElementById("yt-player");
+    const biliIframe = document.getElementById("bili-player");
+    const biliWarn = document.getElementById("bili-warn");
 
     function onYouTubeIframeAPIReady() {
         ytPlayer = new YT.Player('yt-player', {
             height: '100%', width: '100%',
-            playerVars: { 'autoplay': 0, 'controls': 1, 'rel': 0, 'enablejsapi': 1 },
-            events: {
-                'onReady': (e) => { 
-                    ytDiv.classList.add('hidden'); 
-                },
-                'onStateChange': (e) => {
-                    // Ensure unmuted if playing starts
-                    if (e.data === YT.PlayerState.PLAYING) ytPlayer.unMute();
-                }
-            }
+            playerVars: { 'autoplay': 0, 'controls': 1, 'enablejsapi': 1 },
+            events: { 'onReady': () => ytDiv.classList.add('hidden') }
         });
     }
 
-    async function handleLoad() {
+    function handleLoad() {
         const url = document.getElementById("url").value.trim();
         const ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([\w-]{11})/);
         const biliMatch = url.match(/BV\w+/);
 
+        resetData();
+
         if (ytMatch) {
             activePlayer = 'youtube';
-            nativeVid.pause();
-            nativeVid.classList.add('hidden');
+            biliIframe.classList.add('hidden');
             ytDiv.classList.remove('hidden');
+            biliWarn.classList.add('hidden');
             ytPlayer.loadVideoById(ytMatch[1]);
-            ytPlayer.unMute(); // Force unmute on load
-            resetData();
         } else if (biliMatch) {
-            activePlayer = 'native';
-            if(ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+            activePlayer = 'bilibili';
             ytDiv.classList.add('hidden');
-            nativeVid.classList.remove('hidden');
-            loadBilibili(biliMatch[0]);
+            if(ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+            biliIframe.classList.remove('hidden');
+            biliWarn.classList.remove('hidden');
+            biliIframe.src = `https://player.bilibili.com/player.html?bvid=${biliMatch[0]}&high_quality=1&danmaku=0`;
         }
     }
 
-    async function loadBilibili(bvid) {
-        const useProxy = document.getElementById("useProxy").checked;
-        try {
-            const res = await fetch(`https://bilibili-speedrun-retimer.marko-looke.workers.dev/?bvid=${bvid}`);
-            const data = await res.json();
-            if (data.url) {
-                let finalUrl = data.url;
-                if (useProxy) finalUrl = `https://corsproxy.io/?${encodeURIComponent(finalUrl)}`;
-                nativeVid.src = finalUrl;
-                nativeVid.load();
-                resetData();
-            }
-        } catch (e) { alert("Bilibili API Error."); }
+    // Since Bilibili's iframe blocks outside JS from seeing the "currentTime",
+    // retiming for Bilibili in an iframe is manual-only.
+    function getCurrentTime() {
+        if (activePlayer === 'youtube') return ytPlayer.getCurrentTime();
+        return 0; // Bilibili embed is "blind" to outside JS
     }
 
-    // Helper functions
-    function getCurrentTime() {
-        return (activePlayer === 'youtube') ? ytPlayer.getCurrentTime() : nativeVid.currentTime;
+    function step(dir) {
+        if (activePlayer === 'youtube') {
+            ytPlayer.pauseVideo();
+            const fps = parseFloat(document.getElementById("fps").value) || 60;
+            ytPlayer.seekTo(ytPlayer.getCurrentTime() + (1/fps) * dir, true);
+        }
     }
-    function seekTo(time) {
-        if (activePlayer === 'youtube') ytPlayer.seekTo(time, true);
-        else nativeVid.currentTime = time;
+
+    function setStart() { 
+        if (activePlayer === 'bilibili') {
+            startTime = parseFloat(prompt("Enter Start Timestamp (e.g. 12.45):", "0"));
+        } else {
+            startTime = getCurrentTime(); 
+        }
+        update(); 
     }
-    function resetData() { startTime = null; endTime = null; update(); }
-    function getFps() { return parseFloat(document.getElementById("fps").value) || 60; }
-    function step(dir) { seekTo(getCurrentTime() + (1 / getFps()) * dir); }
-    function setStart() { startTime = getCurrentTime(); update(); }
-    function setEnd() { endTime = getCurrentTime(); update(); }
+
+    function setEnd() { 
+        if (activePlayer === 'bilibili') {
+            endTime = parseFloat(prompt("Enter End Timestamp (e.g. 45.20):", "0"));
+        } else {
+            endTime = getCurrentTime(); 
+        }
+        update(); 
+    }
 
     function update() {
         const startTxt = startTime !== null ? startTime.toFixed(3) : "--";
         const endTxt = endTime !== null ? endTime.toFixed(3) : "--";
         document.getElementById("points-display").innerText = `Start: ${startTxt}s | End: ${endTxt}s`;
+        
         if (startTime !== null && endTime !== null) {
             const diff = Math.abs(endTime - startTime);
+            const fps = parseFloat(document.getElementById("fps").value) || 60;
             document.getElementById("result-time").innerText = diff.toFixed(3) + "s";
-            document.getElementById("result-frames").innerText = Math.round(diff * getFps()) + " frames";
+            document.getElementById("result-frames").innerText = Math.round(diff * fps) + " frames";
         }
     }
 
+    function resetData() { startTime = null; endTime = null; update(); }
     function copyResult() {
         const text = `${document.getElementById("result-time").innerText} (${document.getElementById("result-frames").innerText})`;
         navigator.clipboard.writeText(text).then(() => alert("Copied!"));
