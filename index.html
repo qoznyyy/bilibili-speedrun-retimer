@@ -5,8 +5,28 @@
     <title>Speedrun Retimer (Bilibili + YouTube)</title>
     <style>
         body { font-family: 'Segoe UI', Arial; background: #111; color: #eee; text-align: center; padding: 20px; }
-        #player-wrapper { margin: 20px auto; max-width: 850px; background: #000; border-radius: 8px; overflow: hidden; position: relative; aspect-ratio: 16/9; }
-        video, iframe { width: 100%; height: 100%; display: block; border: none; }
+        
+        /* Fixed Player Container */
+        #player-wrapper { 
+            margin: 20px auto; 
+            max-width: 850px; 
+            background: #000; 
+            border-radius: 8px; 
+            overflow: hidden; 
+            position: relative; 
+            aspect-ratio: 16 / 9; /* Ensures container has height */
+        }
+
+        #video-element, #yt-player { 
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%; 
+            height: 100%; 
+            display: block; 
+            border: none; 
+        }
+
         .panel { background: #222; padding: 20px; border-radius: 8px; border: 1px solid #333; max-width: 850px; margin: 10px auto; }
         .controls-row { margin-bottom: 15px; display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap; }
         button { padding: 10px 16px; cursor: pointer; background: #444; color: white; border: none; border-radius: 4px; font-weight: bold; }
@@ -15,7 +35,8 @@
         input { padding: 10px; background: #111; color: white; border: 1px solid #444; border-radius: 4px; }
         .result-box { font-size: 32px; color: #00ff88; font-family: monospace; font-weight: bold; margin: 10px; }
         .proxy-toggle { background: #331111; padding: 8px; border-radius: 4px; border: 1px solid #662222; font-size: 13px; }
-        .hidden { display: none !important; }
+        
+        .hidden { visibility: hidden; pointer-events: none; }
     </style>
     <script src="https://www.youtube.com/iframe_api"></script>
 </head>
@@ -35,7 +56,7 @@
 
     <div id="player-wrapper">
         <video id="video-element" controls crossorigin="anonymous"></video>
-        <div id="yt-player" class="hidden"></div>
+        <div id="yt-player"></div>
     </div>
 
     <div class="panel">
@@ -61,23 +82,38 @@
 
 <script>
     let ytPlayer;
-    let activePlayer = 'native'; // 'native' or 'youtube'
+    let activePlayer = 'native'; 
     let startTime = null, endTime = null;
 
     const nativeVid = document.getElementById("video-element");
-    const ytElement = document.getElementById("yt-player");
+    const ytIframeContainer = document.getElementById("yt-player");
 
     // Initialize YT Player
     function onYouTubeIframeAPIReady() {
         ytPlayer = new YT.Player('yt-player', {
-            height: '100%', width: '100%',
-            playerVars: { 'controls': 1, 'rel': 0 },
-            events: { 'onReady': () => console.log("YT Ready") }
+            height: '100%',
+            width: '100%',
+            videoId: '', // Start empty
+            playerVars: { 
+                'autoplay': 0,
+                'controls': 1,
+                'rel': 0,
+                'origin': window.location.origin
+            },
+            events: {
+                'onReady': () => {
+                    // Start with YT container hidden until a YT link is loaded
+                    ytIframeContainer.classList.add('hidden');
+                }
+            }
         });
     }
 
     function getCurrentTime() {
-        return activePlayer === 'youtube' ? ytPlayer.getCurrentTime() : nativeVid.currentTime;
+        if (activePlayer === 'youtube' && ytPlayer && ytPlayer.getCurrentTime) {
+            return ytPlayer.getCurrentTime();
+        }
+        return nativeVid.currentTime;
     }
 
     function seekTo(time) {
@@ -90,7 +126,7 @@
 
     async function handleLoad() {
         const url = document.getElementById("url").value.trim();
-        const ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/))([\w-]{11})/);
+        const ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([\w-]{11})/);
         const biliMatch = url.match(/BV\w+/);
 
         if (ytMatch) {
@@ -98,21 +134,25 @@
         } else if (biliMatch) {
             loadBilibili(biliMatch[0]);
         } else {
-            alert("Invalid URL. Please use a Bilibili BV link or YouTube link.");
+            alert("Please enter a valid Bilibili BV link or YouTube link.");
         }
     }
 
     function loadYoutube(id) {
         activePlayer = 'youtube';
         nativeVid.classList.add('hidden');
-        ytElement.classList.remove('hidden');
+        nativeVid.pause();
+        
+        ytIframeContainer.classList.remove('hidden');
         ytPlayer.loadVideoById(id);
         resetData();
     }
 
     async function loadBilibili(bvid) {
         activePlayer = 'native';
-        ytElement.classList.add('hidden');
+        ytIframeContainer.classList.add('hidden');
+        if(ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+        
         nativeVid.classList.remove('hidden');
         
         const useProxy = document.getElementById("useProxy").checked;
@@ -126,17 +166,27 @@
                 nativeVid.load();
                 resetData();
             }
-        } catch (e) { alert("Bilibili API Error."); }
+        } catch (e) { 
+            alert("Bilibili API Error. Try toggling the proxy."); 
+        }
     }
 
     function resetData() {
-        startTime = null; endTime = null; update();
+        startTime = null; 
+        endTime = null; 
+        update();
     }
 
-    function getFps() { return parseFloat(document.getElementById("fps").value) || 60; }
+    function getFps() { 
+        return parseFloat(document.getElementById("fps").value) || 60; 
+    }
 
     function step(dir) {
-        const newTime = getCurrentTime() + (1 / getFps()) * dir + (dir * 0.0001);
+        // Stop playback before stepping
+        if (activePlayer === 'youtube') ytPlayer.pauseVideo();
+        else nativeVid.pause();
+
+        const newTime = getCurrentTime() + (1 / getFps()) * dir;
         seekTo(newTime);
     }
 
@@ -152,12 +202,17 @@
             const diff = Math.abs(endTime - startTime);
             document.getElementById("result-time").innerText = diff.toFixed(3) + "s";
             document.getElementById("result-frames").innerText = Math.round(diff * getFps()) + " frames";
+        } else {
+            document.getElementById("result-time").innerText = "0.000s";
+            document.getElementById("result-frames").innerText = "0 frames";
         }
     }
 
     function copyResult() {
-        const text = `${document.getElementById("result-time").innerText} (${document.getElementById("result-frames").innerText})`;
-        navigator.clipboard.writeText(text).then(() => alert("Copied!"));
+        const time = document.getElementById("result-time").innerText;
+        const frames = document.getElementById("result-frames").innerText;
+        const text = `${time} (${frames})`;
+        navigator.clipboard.writeText(text).then(() => alert("Copied result!"));
     }
 
     document.addEventListener("keydown", e => {
