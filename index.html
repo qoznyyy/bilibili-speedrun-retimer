@@ -12,15 +12,15 @@
         button { padding: 10px 16px; cursor: pointer; background: #444; color: white; border: none; border-radius: 4px; font-weight: bold; }
         button:hover { background: #555; }
         .btn-primary { background: #007bff; }
-        .btn-download { background: #e91e63; }
         input { padding: 10px; background: #111; color: white; border: 1px solid #444; border-radius: 4px; }
         .result-box { font-size: 32px; color: #00ff88; font-family: monospace; font-weight: bold; margin: 10px; }
         .proxy-toggle { background: #331111; padding: 8px; border-radius: 4px; border: 1px solid #662222; font-size: 13px; }
+        .timestamp-label { font-size: 14px; color: #aaa; margin-bottom: 5px; }
     </style>
 </head>
 <body>
 
-    <h2>Speedrun Retimer & Proxy Bypass</h2>
+    <h2>Speedrun Retimer</h2>
 
     <div class="controls-row">
         <input id="url" placeholder="Bilibili BV link..." size="35">
@@ -38,8 +38,7 @@
 
     <div class="panel">
         <div class="controls-row">
-            FPS: <input id="fps" type="number" value="60" style="width: 60px;">
-            <button class="btn-download" onclick="downloadVideo()">⬇️ Download</button>
+            FPS: <input id="fps" type="number" value="60" step="0.001" style="width: 80px;">
         </div>
         
         <div class="controls-row">
@@ -50,6 +49,7 @@
         </div>
 
         <div style="border-top: 1px solid #444; padding-top: 15px;">
+            <div class="timestamp-label" id="points-display">Start: -- | End: --</div>
             <div id="result-time" class="result-box">0.000s</div>
             <div id="result-frames" style="color: #888;">0 frames</div>
             <br>
@@ -67,7 +67,10 @@
         const useProxy = document.getElementById("useProxy").checked;
         const match = urlInput.match(/BV\w+/);
         
-        if (!match) return;
+        if (!match) {
+            alert("Please enter a valid Bilibili BV link.");
+            return;
+        }
 
         try {
             const res = await fetch(`https://bilibili-speedrun-retimer.marko-looke.workers.dev/?bvid=${match[0]}`);
@@ -75,49 +78,74 @@
             
             if (data.url) {
                 let finalUrl = data.url;
-                
-                // --- THE PROXY METHOD ---
-                // If checked, we wrap the URL in a CORS-anywhere style proxy
                 if (useProxy) {
                     finalUrl = `https://corsproxy.io/?${encodeURIComponent(finalUrl)}`;
                 }
-                
                 video.src = finalUrl;
                 video.load();
+                // Reset times on new video load
+                startTime = null;
+                endTime = null;
+                update();
             }
         } catch (e) {
-            alert("API error. Try checking 'Force CORS Proxy' and clicking Load again.");
+            alert("API error. Try checking 'Force CORS Proxy' or verify the link.");
         }
     }
 
-    // Standard Retiming Functions
-    function getFps() { return parseFloat(document.getElementById("fps").value) || 60; }
-    function step(dir) { video.pause(); video.currentTime += (1 / getFps()) * dir; }
-    function setStart() { startTime = video.currentTime; update(); }
-    function setEnd() { endTime = video.currentTime; update(); }
+    function getFps() { 
+        return parseFloat(document.getElementById("fps").value) || 60; 
+    }
+
+    function step(dir) { 
+        video.pause(); 
+        // Small epsilon added to ensure the frame actually changes
+        video.currentTime += (1 / getFps()) * dir + (dir * 0.00001); 
+    }
+
+    function setStart() { 
+        startTime = video.currentTime; 
+        update(); 
+    }
+
+    function setEnd() { 
+        endTime = video.currentTime; 
+        update(); 
+    }
     
     function update() {
+        const pointsDisplay = document.getElementById("points-display");
+        const startTxt = startTime !== null ? startTime.toFixed(3) : "--";
+        const endTxt = endTime !== null ? endTime.toFixed(3) : "--";
+        pointsDisplay.innerText = `Start: ${startTxt}s | End: ${endTxt}s`;
+
         if (startTime !== null && endTime !== null) {
             const diff = Math.abs(endTime - startTime);
+            const fps = getFps();
             document.getElementById("result-time").innerText = diff.toFixed(3) + "s";
-            document.getElementById("result-frames").innerText = Math.round(diff * getFps()) + " frames";
+            document.getElementById("result-frames").innerText = Math.round(diff * fps) + " frames";
+        } else {
+            document.getElementById("result-time").innerText = "0.000s";
+            document.getElementById("result-frames").innerText = "0 frames";
         }
     }
 
-    function downloadVideo() { window.open(video.src, '_blank'); }
-
     function copyResult() {
-        const text = `${document.getElementById("result-time").innerText} (${document.getElementById("result-frames").innerText})`;
-        navigator.clipboard.writeText(text);
-        alert("Copied!");
+        const time = document.getElementById("result-time").innerText;
+        const frames = document.getElementById("result-frames").innerText;
+        if (time === "0.000s") return;
+        
+        const text = `${time} (${frames})`;
+        navigator.clipboard.writeText(text).then(() => alert("Copied: " + text));
     }
 
     document.addEventListener("keydown", e => {
         if (e.target.tagName === 'INPUT') return;
-        if (e.key.toLowerCase() === "a") setStart();
-        if (e.key.toLowerCase() === "e") setEnd();
-        if (e.key === ",") step(-1);
-        if (e.key === ".") step(1);
+        const key = e.key.toLowerCase();
+        if (key === "a") setStart();
+        if (key === "e") setEnd();
+        if (key === ",") step(-1);
+        if (key === ".") step(1);
     });
 </script>
 </body>
