@@ -2,162 +2,130 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Speedrun Retimer (YouTube + Bilibili Embeds)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GTA Series Verification Queue</title>
     <style>
-        body { font-family: 'Segoe UI', Arial; background: #111; color: #eee; text-align: center; padding: 20px; }
-        #player-wrapper { 
-            margin: 20px auto; max-width: 850px; background: #000; 
-            border-radius: 8px; overflow: hidden; position: relative; aspect-ratio: 16 / 9; 
-        }
-        iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
-        .panel { background: #222; padding: 20px; border-radius: 8px; border: 1px solid #333; max-width: 850px; margin: 10px auto; }
-        .controls-row { margin-bottom: 15px; display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap; }
-        button { padding: 10px 16px; cursor: pointer; background: #444; color: white; border: none; border-radius: 4px; font-weight: bold; }
-        button:hover { background: #555; }
-        .btn-primary { background: #007bff; }
-        input { padding: 10px; background: #111; color: white; border: 1px solid #444; border-radius: 4px; }
-        .result-box { font-size: 32px; color: #00ff88; font-family: monospace; font-weight: bold; margin: 10px; }
-        .hidden { display: none !important; }
-        .warning { font-size: 12px; color: #ffa500; margin-top: 5px; }
+        body { font-family: sans-serif; background: #121212; color: #e0e0e0; padding: 20px; }
+        h1 { color: #f39c12; text-align: center; }
+        .controls { text-align: center; margin-bottom: 20px; }
+        button { background: #f39c12; border: none; padding: 10px 20px; cursor: pointer; font-weight: bold; border-radius: 5px; }
+        button:disabled { background: #555; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #1e1e1e; }
+        th, td { padding: 12px; border: 1px solid #333; text-align: left; }
+        th { background: #2c3e50; }
+        tr:hover { background: #252525; }
+        .loading { text-align: center; font-style: italic; color: #aaa; }
+        a { color: #3498db; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .badge { background: #444; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-right: 5px; }
     </style>
-    <script src="https://www.youtube.com/iframe_api"></script>
 </head>
 <body>
 
-    <h2>Speedrun Retimer</h2>
-
-    <div class="controls-row">
-        <input id="url" placeholder="Paste Bilibili or YouTube link..." size="45">
-        <button class="btn-primary" onclick="handleLoad()">Load Player</button>
+    <h1>GTA Series Verification Queue</h1>
+    
+    <div class="controls">
+        <button id="refreshBtn">Refresh All GTA Queues</button>
+        <p id="status"></p>
     </div>
 
-    <div id="player-wrapper">
-        <div id="yt-player"></div>
-        <iframe id="bili-player" class="hidden" allowfullscreen="true"></iframe>
-    </div>
+    <table id="queueTable">
+        <thead>
+            <tr>
+                <th>Game</th>
+                <th>Category</th>
+                <th>Player</th>
+                <th>Time</th>
+                <th>Submitted</th>
+                <th>Link</th>
+            </tr>
+        </thead>
+        <tbody id="queueBody">
+            </tbody>
+    </table>
 
-    <div class="panel">
-        <div class="controls-row">
-            FPS: <input id="fps" type="number" value="60" step="0.001" style="width: 80px;">
-        </div>
+    <script>
+        // List of GTA game abbreviations on speedrun.com
+        const gtaGames = [
+            'gta1', 'gta_london_1969', 'gta_london_1961', 'gta2', 
+            'gta_iii', 'gtavc', 'gtasa', 'gtalcs', 'gtavcs', 
+            'gtaiv', 'gtaiv_tlad', 'gtaiv_tbogt', 'gtacw', 'gtav', 'gta_v_ce'
+        ];
+
+        const refreshBtn = document.getElementById('refreshBtn');
+        const queueBody = document.getElementById('queueBody');
+        const statusText = document.getElementById('status');
+
+        async function fetchQueue() {
+            refreshBtn.disabled = true;
+            queueBody.innerHTML = '';
+            statusText.innerText = "Fetching games...";
+            
+            let allRuns = [];
+
+            for (const abbreviation of gtaGames) {
+                statusText.innerText = `Fetching ${abbreviation}...`;
+                try {
+                    // 1. Get Game ID and Name
+                    const gameRes = await fetch(`https://www.speedrun.com/api/v1/games/${abbreviation}`);
+                    const gameData = await gameRes.json();
+                    const gameId = gameData.data.id;
+                    const gameName = gameData.data.names.international;
+
+                    // 2. Get Pending Runs for this Game
+                    const runRes = await fetch(`https://www.speedrun.com/api/v1/runs?game=${gameId}&status=new&max=200&embed=category,players`);
+                    const runData = await runRes.json();
+
+                    runData.data.forEach(run => {
+                        allRuns.push({
+                            game: gameName,
+                            category: run.category.data.name,
+                            player: run.players.data[0].names ? run.players.data[0].names.international : run.players.data[0].name,
+                            time: formatTime(run.times.primary_t),
+                            submitted: new Date(run.submitted),
+                            link: run.weblink
+                        });
+                    });
+                } catch (e) {
+                    console.error(`Error fetching ${abbreviation}:`, e);
+                }
+            }
+
+            // Sort by submission date (oldest first)
+            allRuns.sort((a, b) => a.submitted - b.submitted);
+
+            // Render to table
+            if (allRuns.length === 0) {
+                queueBody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No pending runs found!</td></tr>';
+            } else {
+                allRuns.forEach(run => {
+                    const row = `<tr>
+                        <td><span class="badge">${run.game}</span></td>
+                        <td>${run.category}</td>
+                        <td>${run.player}</td>
+                        <td>${run.time}</td>
+                        <td>${run.submitted.toLocaleDateString()}</td>
+                        <td><a href="${run.link}" target="_blank">View</a></td>
+                    </tr>`;
+                    queueBody.innerHTML += row;
+                });
+            }
+
+            statusText.innerText = `Done! Found ${allRuns.length} pending runs.`;
+            refreshBtn.disabled = false;
+        }
+
+        function formatTime(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.floor(seconds % 60);
+            return [h, m, s].map(v => v < 10 ? "0" + v : v).filter((v,i) => v !== "00" || i > 0).join(":");
+        }
+
+        refreshBtn.addEventListener('click', fetchQueue);
         
-        <div class="controls-row">
-            <button onclick="setStart()">Set Start (A)</button>
-            <button onclick="setEnd()">Set End (E)</button>
-            <button onclick="step(-1)">◀ Frame (,)</button>
-            <button onclick="step(1)">Frame ▶ (.)</button>
-        </div>
-
-        <div style="border-top: 1px solid #444; padding-top: 15px;">
-            <div id="points-display" style="color:#aaa; font-size:14px;">Start: -- | End: --</div>
-            <div id="result-time" class="result-box">0.000s</div>
-            <div id="result-frames" style="color: #888;">0 frames</div>
-            <br>
-            <button onclick="copyResult()">Copy Result</button>
-            <div class="warning" id="bili-warn">Note: Bilibili embed does not support frame-stepping via buttons. Use its internal seek bar.</div>
-        </div>
-    </div>
-
-<script>
-    let ytPlayer;
-    let activePlayer = 'none';
-    let startTime = null, endTime = null;
-
-    const ytDiv = document.getElementById("yt-player");
-    const biliIframe = document.getElementById("bili-player");
-    const biliWarn = document.getElementById("bili-warn");
-
-    function onYouTubeIframeAPIReady() {
-        ytPlayer = new YT.Player('yt-player', {
-            height: '100%', width: '100%',
-            playerVars: { 'autoplay': 0, 'controls': 1, 'enablejsapi': 1 },
-            events: { 'onReady': () => ytDiv.classList.add('hidden') }
-        });
-    }
-
-    function handleLoad() {
-        const url = document.getElementById("url").value.trim();
-        const ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([\w-]{11})/);
-        const biliMatch = url.match(/BV\w+/);
-
-        resetData();
-
-        if (ytMatch) {
-            activePlayer = 'youtube';
-            biliIframe.classList.add('hidden');
-            ytDiv.classList.remove('hidden');
-            biliWarn.classList.add('hidden');
-            ytPlayer.loadVideoById(ytMatch[1]);
-        } else if (biliMatch) {
-            activePlayer = 'bilibili';
-            ytDiv.classList.add('hidden');
-            if(ytPlayer.pauseVideo) ytPlayer.pauseVideo();
-            biliIframe.classList.remove('hidden');
-            biliWarn.classList.remove('hidden');
-            biliIframe.src = `https://player.bilibili.com/player.html?bvid=${biliMatch[0]}&high_quality=1&danmaku=0`;
-        }
-    }
-
-    // Since Bilibili's iframe blocks outside JS from seeing the "currentTime",
-    // retiming for Bilibili in an iframe is manual-only.
-    function getCurrentTime() {
-        if (activePlayer === 'youtube') return ytPlayer.getCurrentTime();
-        return 0; // Bilibili embed is "blind" to outside JS
-    }
-
-    function step(dir) {
-        if (activePlayer === 'youtube') {
-            ytPlayer.pauseVideo();
-            const fps = parseFloat(document.getElementById("fps").value) || 60;
-            ytPlayer.seekTo(ytPlayer.getCurrentTime() + (1/fps) * dir, true);
-        }
-    }
-
-    function setStart() { 
-        if (activePlayer === 'bilibili') {
-            startTime = parseFloat(prompt("Enter Start Timestamp (e.g. 12.45):", "0"));
-        } else {
-            startTime = getCurrentTime(); 
-        }
-        update(); 
-    }
-
-    function setEnd() { 
-        if (activePlayer === 'bilibili') {
-            endTime = parseFloat(prompt("Enter End Timestamp (e.g. 45.20):", "0"));
-        } else {
-            endTime = getCurrentTime(); 
-        }
-        update(); 
-    }
-
-    function update() {
-        const startTxt = startTime !== null ? startTime.toFixed(3) : "--";
-        const endTxt = endTime !== null ? endTime.toFixed(3) : "--";
-        document.getElementById("points-display").innerText = `Start: ${startTxt}s | End: ${endTxt}s`;
-        
-        if (startTime !== null && endTime !== null) {
-            const diff = Math.abs(endTime - startTime);
-            const fps = parseFloat(document.getElementById("fps").value) || 60;
-            document.getElementById("result-time").innerText = diff.toFixed(3) + "s";
-            document.getElementById("result-frames").innerText = Math.round(diff * fps) + " frames";
-        }
-    }
-
-    function resetData() { startTime = null; endTime = null; update(); }
-    function copyResult() {
-        const text = `${document.getElementById("result-time").innerText} (${document.getElementById("result-frames").innerText})`;
-        navigator.clipboard.writeText(text).then(() => alert("Copied!"));
-    }
-
-    document.addEventListener("keydown", e => {
-        if (e.target.tagName === 'INPUT') return;
-        const key = e.key.toLowerCase();
-        if (key === "a") setStart();
-        if (key === "e") setEnd();
-        if (key === ",") step(-1);
-        if (key === ".") step(1);
-    });
-</script>
+        // Initial load
+        fetchQueue();
+    </script>
 </body>
 </html>
